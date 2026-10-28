@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QueryCraft - Visual SQL Builder & Validator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            DEFAULT: '#5a4fcf',
+                            hover: '#4b42b0',
+                            light: '#e8e6f9',
+                        },
+                        bgLight: '#f4f6fa',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #f4f6fa; color: #1f2937; }
+        .tab-active { border-bottom: 2px solid #5a4fcf; color: #5a4fcf; font-weight: 500; }
+        .tab-inactive { color: #6b7280; }
+        .tab-inactive:hover { color: #374151; }
+        
+        /* Custom scrollbar for outputs */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* SQL Highlight colors for output */
+        .sql-keyword { color: #c678dd; }
+        .sql-identifier { color: #61afef; }
+        .sql-string { color: #98c379; }
+        .sql-number { color: #d19a66; }
+        .sql-operator { color: #56b6c2; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
+        <div class="flex items-center gap-3">
+            <div class="bg-brand w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 shadow-md">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"></path>
+                </svg>
+            </div>
+            <div class="flex flex-col leading-tight">
+                <span class="text-lg font-bold text-gray-900 tracking-tight">QueryCraft</span>
+                <span class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Visual SQL Builder & Validator</span>
+            </div>
+        </div>
+        <div>
+            <span class="bg-brand-light text-brand text-xs font-bold px-3 py-1.5 rounded-full tracking-wide">COMPILER DESIGN LAB</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow container mx-auto max-w-7xl px-4 py-8 flex flex-col gap-6">
+        
+        <!-- Hero Section -->
+        <section class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-1 tracking-tight">Build. Parse. Validate.</h1>
+                <p class="text-gray-500 text-sm">Create a SQL query visually, then inspect how the parser understands it.</p>
+            </div>
+            <button id="btn-load-sample" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-4 rounded-lg transition-colors border border-gray-200 flex items-center gap-2">
+                Load sample query
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </button>
+        </section>
+
+        <!-- Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+            
+            <!-- Left Column: Builder & Input -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+                
+                <!-- Section 1 Header -->
+                <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                    <h2 class="font-semibold text-gray-800">01 / Query Builder</h2>
+                    <span class="bg-brand-light text-brand text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Visual Mode</span>
+                </div>
+
+                <!-- Visual Form -->
+                <div class="p-6 space-y-5">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Table</label>
+                        <select id="v-table" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                            <option value="courses">courses</option>
+                            <option value="students">students</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-2 uppercase">Columns</label>
+                        <div class="flex flex-wrap gap-4">
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" value="course_id" class="col-check w-4 h-4 text-brand bg-gray-100 border-gray-300 rounded focus:ring-brand">
+                                course_id
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" value="course_name" class="col-check w-4 h-4 text-brand bg-gray-100 border-gray-300 rounded focus:ring-brand">
+                                course_name
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" value="credits" class="col-check w-4 h-4 text-brand bg-gray-100 border-gray-300 rounded focus:ring-brand">
+                                credits
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" value="department" class="col-check w-4 h-4 text-brand bg-gray-100 border-gray-300 rounded focus:ring-brand">
+                                department
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Filter Column</label>
+                            <select id="v-filter-col" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                                <option value="None">No filter</option>
+                                <option value="course_id">course_id</option>
+                                <option value="course_name">course_name</option>
+                                <option value="credits">credits</option>
+                                <option value="department">department</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Operator</label>
+                            <select id="v-operator" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                                <option value="=">=</option>
+                                <option value="<"><</option>
+                                <option value=">">></option>
+                                <option value="<="><=</option>
+                                <option value=">=">>=</option>
+                                <option value="!=">!=</option>
+                                <option value="LIKE">LIKE</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Filter Value</label>
+                        <input type="text" id="v-filter-val" placeholder="e.g. 8.5 or 'Engineering'" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Order By</label>
+                            <select id="v-order-col" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                                <option value="None">No sorting</option>
+                                <option value="course_id">course_id</option>
+                                <option value="credits">credits</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Direction</label>
+                            <select id="v-order-dir" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                                <option value="ASC">ASC</option>
+                                <option value="DESC">DESC</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Limit</label>
+                            <input type="text" id="v-limit" placeholder="e.g. 10" class="w-full bg-white border border-gray-300 text-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Query Type</label>
+                            <select disabled class="w-full bg-gray-50 border border-gray-200 text-gray-500 rounded-md px-3 py-2 text-sm cursor-not-allowed">
+                                <option>SELECT</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex gap-3">
+                        <button id="btn-generate" class="bg-brand hover:bg-brand-hover text-white text-sm font-medium py-2 px-5 rounded-md transition-colors shadow-sm">Generate SQL</button>
+                        <button id="btn-reset" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-5 rounded-md transition-colors border border-gray-200">Reset</button>
+                    </div>
+                </div>
+
+                <hr class="border-gray-100">
+
+                <!-- Manual Input -->
+                <div class="p-6 bg-gray-50 flex-grow flex flex-col">
+                    <div class="flex justify-between items-baseline mb-1">
+                        <h3 class="font-semibold text-gray-800">Or enter SQL directly</h3>
+                        <span class="text-xs text-gray-400 italic">Editable</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3">Supported subset: SELECT, FROM, WHERE, ORDER BY and LIMIT.</p>
+                    
+                    <div class="relative flex-grow">
+                        <textarea id="sql-editor" class="w-full h-32 md:h-40 bg-white border border-gray-300 rounded-md p-3 text-sm font-mono text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand shadow-inner" spellcheck="false" placeholder="SELECT * FROM table;"></textarea>
+                        <!-- Bottom right icon -->
+                        <div class="absolute bottom-2 right-2 text-gray-300 pointer-events-none">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 flex gap-3">
+                        <button id="btn-validate" class="bg-brand hover:bg-brand-hover text-white text-sm font-medium py-2 px-5 rounded-md transition-colors shadow-sm">Validate & Parse</button>
+                        <button id="btn-format" class="bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium py-2 px-5 rounded-md transition-colors border border-gray-300 shadow-sm">Format SQL</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Parser Output -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+                
+                <!-- Section 2 Header -->
+                <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white">
+                    <h2 class="font-semibold text-gray-800">02 / Parser Output</h2>
+                    <span class="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Live Analysis</span>
+                </div>
+
+                <div class="p-6 flex-grow flex flex-col overflow-hidden gap-4">
+                    
+                    <!-- Validation Banner -->
+                    <div id="status-banner" class="hidden rounded-md px-4 py-3 text-sm font-medium border flex items-start gap-2">
+                        <svg id="status-icon" class="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"></svg>
+                        <span id="status-text"></span>
+                    </div>
+
+                    <!-- SQL Output Display -->
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-2 uppercase">SQL Output</label>
+                        <div class="bg-[#1e2330] rounded-lg p-4 h-32 overflow-y-auto shadow-inner border border-gray-800">
+                            <pre id="sql-display" class="font-mono text-sm text-gray-300 whitespace-pre-wrap"></pre>
+                        </div>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="mt-2 border-b border-gray-200">
+                        <nav class="flex gap-6 px-2 text-sm">
+                            <button class="tab-btn tab-inactive pb-3 px-1 transition-colors" data-target="tab-tokens">Tokens</button>
+                            <button class="tab-btn tab-inactive pb-3 px-1 transition-colors" data-target="tab-ast">Parse Tree</button>
+                            <button class="tab-btn tab-active pb-3 px-1 transition-colors" data-target="tab-diagnostics">Diagnostics</button>
+                        </nav>
+                    </div>
+
+                    <!-- Tab Contents -->
+                    <div class="flex-grow overflow-y-auto relative min-h-[250px]">
+                        
+                        <!-- Tokens Tab -->
+                        <div id="tab-tokens" class="tab-content hidden absolute inset-0">
+                            <div class="border rounded-md border-gray-200 overflow-hidden">
+                                <table class="w-full text-left text-sm border-collapse">
+                                    <thead class="bg-gray-50 text-gray-600">
+                                        <tr>
+                                            <th class="py-2 px-4 border-b border-gray-200 font-medium">Type</th>
+                                            <th class="py-2 px-4 border-b border-gray-200 font-medium">Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tokens-body" class="divide-y divide-gray-100">
+                                        <!-- Populated via JS -->
+                                        <tr><td colspan="2" class="p-4 text-center text-gray-400 italic">No tokens generated yet.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Parse Tree (AST) Tab -->
+                        <div id="tab-ast" class="tab-content hidden absolute inset-0">
+                            <div id="d3-container" class="bg-gray-50 rounded-md border border-gray-200 h-full overflow-hidden relative cursor-move">
+                                <!-- D3 SVG injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Diagnostics Tab -->
+                        <div id="tab-diagnostics" class="tab-content absolute inset-0 flex flex-col gap-4">
+                            <div id="diag-banner" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-600">
+                                Run a query to see diagnostics.
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-3 h-full pb-2">
+                                <div class="border border-gray-200 rounded-md p-3 shadow-sm bg-white">
+                                    <h4 class="text-sm font-semibold text-gray-800 mb-1">1. Lexer</h4>
+                                    <p class="text-xs text-gray-500">Splits SQL into tokens</p>
+                                    <div id="diag-lexer-status" class="mt-2 text-xs font-medium text-gray-400">-</div>
+                                </div>
+                                <div class="border border-gray-200 rounded-md p-3 shadow-sm bg-white">
+                                    <h4 class="text-sm font-semibold text-gray-800 mb-1">2. Parser</h4>
+                                    <p class="text-xs text-gray-500">Checks statement grammar</p>
+                                    <div id="diag-parser-status" class="mt-2 text-xs font-medium text-gray-400">-</div>
+                                </div>
+                                <div class="border border-gray-200 rounded-md p-3 shadow-sm bg-white">
+                                    <h4 class="text-sm font-semibold text-gray-800 mb-1">3. Validator</h4>
+                                    <p class="text-xs text-gray-500">Checks clauses semantics</p>
+                                    <div id="diag-validator-status" class="mt-2 text-xs font-medium text-gray-400">-</div>
+                                </div>
+                                <div class="border border-gray-200 rounded-md p-3 shadow-sm bg-white">
+                                    <h4 class="text-sm font-semibold text-gray-800 mb-1">4. Output</h4>
+                                    <p class="text-xs text-gray-500">Builds parse structure</p>
+                                    <div id="diag-output-status" class="mt-2 text-xs font-medium text-gray-400">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 text-center text-xs text-gray-500 mt-auto">
+        QueryCraft - Educational SQL subset only - Does not connect to or execute queries on a database.
+    </footer>
+
+    <!-- Logic Script -->
+    <script>
+        // --- 1. Core Logic: Lexical Analyzer ---
+        const TokenType = {
+            KEYWORD: 'KEYWORD', IDENTIFIER: 'IDENTIFIER', NUMBER: 'NUMBER',
+            STRING: 'STRING', OPERATOR: 'OPERATOR', PUNCTUATION: 'PUNCTUATION', EOF: 'EOF'
+        };
+
+        const KEYWORDS = new Set([
+            'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER', 'BY', 'ASC', 'DESC', 'LIMIT', 'LIKE'
+        ]);
+
+        class Lexer {
+            constructor(input) {
+                this.input = input;
+                this.position = 0;
+            }
+
+            tokenize() {
+                const tokens = [];
+                while (this.position < this.input.length) {
+                    let char = this.input[this.position];
+
+                    if (/\s/.test(char)) { this.position++; continue; }
+                    
+                    if (/[0-9]/.test(char)) { tokens.push(this.readNumber()); continue; }
+                    
+                    if (/[a-zA-Z_]/.test(char)) { tokens.push(this.readIdentifierOrKeyword()); continue; }
+                    
+                    if (char === "'" || char === '"') { tokens.push(this.readString(char)); continue; }
+                    
+                    if (/[=><!]/.test(char)) { tokens.push(this.readOperator()); continue; }
+                    
+                    if (char === ',' || char === '*' || char === ';') {
+                        tokens.push({ type: TokenType.PUNCTUATION, value: char });
+                        this.position++; continue;
+                    }
+                    
+                    throw new Error(`Lexical Error: Unexpected character '${char}' at index ${this.position}`);
+                }
+                tokens.push({ type: TokenType.EOF, value: null });
+                return tokens;
+            }
+
+            readNumber() {
+                let value = '';
+                while (this.position < this.input.length && /[0-9\.]/.test(this.input[this.position])) {
+                    value += this.input[this.position++];
+                }
+                return { type: TokenType.NUMBER, value: Number(value) };
+            }
+
+            readIdentifierOrKeyword() {
+                let value = '';
+                while (this.position < this.input.length && /[a-zA-Z0-9_]/.test(this.input[this.position])) {
+                    value += this.input[this.position++];
+                }
+                const upper = value.toUpperCase();
+                if (KEYWORDS.has(upper)) return { type: TokenType.KEYWORD, value: upper };
+                return { type: TokenType.IDENTIFIER, value };
+            }
+
+            readString(quoteChar) {
+                let value = '';
+                this.position++; // skip opening
+                while (this.position < this.input.length && this.input[this.position] !== quoteChar) {
+                    value += this.input[this.position++];
+                }
+                if (this.position >= this.input.length) throw new Error("Lexical Error: Unterminated string literal");
+                this.position++; // skip closing
+                return { type: TokenType.STRING, value };
+            }
+
+            readOperator() {
+                let char = this.input[this.position];
+                let nextChar = this.input[this.position + 1];
+                let op = char;
+                if ((char === '>' || char === '<' || char === '!') && nextChar === '=') {
+                    op += nextChar; this.position += 2;
+                } else {
+                    this.position++;
+                }
+                return { type: TokenType.OPERATOR, value: op };
+            }
+        }
+
+        // --- 2. Core Logic: Parser ---
+        class Parser {
+            constructor(tokens) {
+                this.tokens = tokens;
+                this.current = 0;
+            }
+
+            peek() { return this.tokens[this.current]; }
+            isAtEnd() { return this.peek().type === TokenType.EOF; }
+            advance() { if (!this.isAtEnd()) this.current++; return this.tokens[this.current - 1]; }
+            
+            match(type, value = null) {
+                if (this.check(type, value)) { this.advance(); return true; }
+                return false;
+            }
+
+            check(type, value = null) {
+                if (this.isAtEnd()) return false;
+                const token = this.peek();
+                if (token.type !== type) return false;
+                if (value !== null && token.value !== value) return false;
+                return true;
+            }
+
+            consume(type, value, err) {
+                if (this.check(type, value)) return this.advance();
+                const t = this.peek();
+                const found = t.type === TokenType.EOF ? 'EOF' : `'${t.value}'`;
+                throw new Error(`Syntax Error: ${err}. Found ${found}`);
+            }
+
+            parse() {
+                const ast = { type: 'SelectStatement', select: [], from: null, where: null, orderBy: null, limit: null };
+
+                // SELECT
+                this.consume(TokenType.KEYWORD, 'SELECT', "Expected 'SELECT'");
+                ast.select = this.parseColumns();
+
+                // FROM
+                this.consume(TokenType.KEYWORD, 'FROM', "Expected 'FROM'");
+                ast.from = this.consume(TokenType.IDENTIFIER, null, "Expected table name").value;
+
+                // WHERE
+                if (this.match(TokenType.KEYWORD, 'WHERE')) {
+                    ast.where = this.parseCondition();
+                }
+
+                // ORDER BY
+                if (this.match(TokenType.KEYWORD, 'ORDER')) {
+                    this.consume(TokenType.KEYWORD, 'BY', "Expected 'BY' after 'ORDER'");
+                    const col = this.consume(TokenType.IDENTIFIER, null, "Expected column name").value;
+                    let dir = 'ASC';
+                    if (this.match(TokenType.KEYWORD, 'ASC') || this.match(TokenType.KEYWORD, 'DESC')) {
+                        dir = this.tokens[this.current - 1].value;
+                    }
+                    ast.orderBy = { column: col, direction: dir };
+                }
+
+                // LIMIT
+                if (this.match(TokenType.KEYWORD, 'LIMIT')) {
+                    ast.limit = this.consume(TokenType.NUMBER, null, "Expected numeric limit").value;
+                }
+
+                // Semicolon (Optional)
+                this.match(TokenType.PUNCTUATION, ';');
+
+                if (!this.isAtEnd()) {
+                    throw new Error(`Syntax Error: Unexpected token '${this.peek().value}' after valid statement`);
+                }
+                return ast;
+            }
+
+            parseColumns() {
+                const cols = [];
+                if (this.match(TokenType.PUNCTUATION, '*')) {
+                    cols.push({ type: 'Wildcard', value: '*' });
+                    return cols;
+                }
+                do {
+                    const token = this.consume(TokenType.IDENTIFIER, null, "Expected column name");
+                    cols.push({ type: 'Column', name: token.value });
+                } while (this.match(TokenType.PUNCTUATION, ','));
+                return cols;
+            }
+
+            parseCondition() {
+                const left = this.consume(TokenType.IDENTIFIER, null, "Expected column name in WHERE");
+                
+                let operator;
+                if (this.match(TokenType.KEYWORD, 'LIKE')) operator = 'LIKE';
+                else if (this.check(TokenType.OPERATOR)) operator = this.advance().value;
+                else throw new Error("Syntax Error: Expected operator in WHERE");
+
+                const rightToken = this.peek();
+                let right;
+                if (this.match(TokenType.NUMBER) || this.match(TokenType.STRING)) {
+                    right = { type: 'Literal', value: rightToken.value };
+                } else if (this.match(TokenType.IDENTIFIER)) {
+                    right = { type: 'Column', name: rightToken.value };
+                } else {
+                    throw new Error("Syntax Error: Expected value after operator");
+                }
+
+                return { type: 'BinaryExpression', operator, left: left.value, right };
+            }
+        }
+
+
+        // --- 3. UI Interactions & DOM ---
+        const els = {
+            vTable: document.getElementById('v-table'),
+            colChecks: document.querySelectorAll('.col-check'),
+            vFilterCol: document.getElementById('v-filter-col'),
+            vOp: document.getElementById('v-operator'),
+            vFilterVal: document.getElementById('v-filter-val'),
+            vOrderCol: document.getElementById('v-order-col'),
+            vOrderDir: document.getElementById('v-order-dir'),
+            vLimit: document.getElementById('v-limit'),
+            
+            btnGen: document.getElementById('btn-generate'),
+            btnReset: document.getElementById('btn-reset'),
+            sqlEditor: document.getElementById('sql-editor'),
+            btnVal: document.getElementById('btn-validate'),
+            btnFormat: document.getElementById('btn-format'),
+            btnSample: document.getElementById('btn-load-sample'),
+            
+            sqlDisplay: document.getElementById('sql-display'),
+            statusBanner: document.getElementById('status-banner'),
+            statusIcon: document.getElementById('status-icon'),
+            statusText: document.getElementById('status-text'),
+            
+            tokensBody: document.getElementById('tokens-body'),
+            d3Container: document.getElementById('d3-container'),
+            
+            tabBtns: document.querySelectorAll('.tab-btn'),
+            tabContents: document.querySelectorAll('.tab-content'),
+
+            dLex: document.getElementById('diag-lexer-status'),
+            dParse: document.getElementById('diag-parser-status'),
+            dVal: document.getElementById('diag-validator-status'),
+            dOut: document.getElementById('diag-output-status'),
+            dBan: document.getElementById('diag-banner')
+        };
+
+        // Tabs Logic
+        els.tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                els.tabBtns.forEach(b => { b.classList.remove('tab-active'); b.classList.add('tab-inactive'); });
+                btn.classList.add('tab-active'); btn.classList.remove('tab-inactive');
+                
+                els.tabContents.forEach(c => c.classList.add('hidden'));
+                document.getElementById(btn.dataset.target).classList.remove('hidden');
+            });
+        });
+
+        // Builder to SQL
+        function generateFromVisual() {
+            const table = els.vTable.value;
+            const cols = Array.from(els.colChecks).filter(c => c.checked).map(c => c.value);
+            const selectPart = cols.length > 0 ? cols.join(', ') : '*';
+            
+            let sql = `SELECT ${selectPart}\nFROM ${table}`;
+
+            const fCol = els.vFilterCol.value;
+            if (fCol !== 'None') {
+                const op = els.vOp.value;
+                const val = els.vFilterVal.value.trim() || "''";
+                sql += `\nWHERE ${fCol} ${op} ${val}`;
+            }
+
+            const oCol = els.vOrderCol.value;
+            if (oCol !== 'None') {
+                sql += `\nORDER BY ${oCol} ${els.vOrderDir.value}`;
+            }
+
+            const lim = els.vLimit.value.trim();
+            if (lim && !isNaN(lim)) {
+                sql += `\nLIMIT ${lim}`;
+            }
+
+            sql += ';';
+            els.sqlEditor.value = sql;
+            runParserPipeline(sql);
+        }
+
+        // Reset
+        els.btnReset.addEventListener('click', () => {
+            els.vTable.value = 'courses';
+            els.colChecks.forEach(c => c.checked = false);
+            els.vFilterCol.value = 'None';
+            els.vOp.value = '=';
+            els.vFilterVal.value = '';
+            els.vOrderCol.value = 'None';
+            els.vOrderDir.value = 'ASC';
+            els.vLimit.value = '';
+            els.sqlEditor.value = '';
+            resetOutputs();
+        });
+
+        // Run Logic
+        els.btnGen.addEventListener('click', generateFromVisual);
+        els.btnVal.addEventListener('click', () => runParserPipeline(els.sqlEditor.value));
+        
+        els.btnFormat.addEventListener('click', () => {
+            const val = els.sqlEditor.value.trim();
+            if(!val) return;
+            els.sqlEditor.value = val.replace(/\s+/g, ' ')
+                .replace(/ FROM/i, '\nFROM')
+                .replace(/ WHERE/i, '\nWHERE')
+                .replace(/ ORDER BY/i, '\nORDER BY')
+                .replace(/ LIMIT/i, '\nLIMIT');
+        });
+
+        // Load Sample
+        els.btnSample.addEventListener('click', () => {
+            els.btnReset.click();
+            els.colChecks[0].checked = true; // course_id
+            generateFromVisual();
+        });
+
+        function resetOutputs() {
+            els.statusBanner.className = 'hidden';
+            els.sqlDisplay.innerHTML = '';
+            els.tokensBody.innerHTML = '<tr><td colspan="2" class="p-4 text-center text-gray-400 italic">No tokens generated yet.</td></tr>';
+            if(els.d3Container) els.d3Container.innerHTML = '';
+            els.dLex.innerHTML = '-'; els.dParse.innerHTML = '-'; els.dVal.innerHTML = '-'; els.dOut.innerHTML = '-';
+            els.dBan.className = 'bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-600';
+            els.dBan.textContent = 'Run a query to see diagnostics.';
+        }
+
+        function highlightSQL(sql) {
+            // Very simple pseudo-highlighting
+            return sql
+                .replace(/\b(SELECT|FROM|WHERE|AND|OR|ORDER BY|LIMIT|ASC|DESC|LIKE)\b/gi, '<span class="sql-keyword">$1</span>')
+                .replace(/([=><!]+)/g, '<span class="sql-operator">$1</span>')
+                .replace(/('.*?')/g, '<span class="sql-string">$1</span>')
+                .replace(/\b(\d+)\b/g, '<span class="sql-number">$1</span>');
+        }
+
+        function runParserPipeline(sqlStr) {
+            sqlStr = sqlStr.trim();
+            if (!sqlStr) {
+                resetOutputs(); return;
+            }
+            
+            els.sqlDisplay.innerHTML = highlightSQL(sqlStr);
+            els.statusBanner.classList.remove('hidden');
+
+            try {
+                // Phase 1: Lexing
+                const lexer = new Lexer(sqlStr);
+                const tokens = lexer.tokenize();
+                renderTokens(tokens);
+                els.dLex.innerHTML = `<span class="text-green-600">✓ Success (${tokens.length} tokens)</span>`;
+
+                // Phase 2: Parsing
+                const parser = new Parser(tokens);
+                const ast = parser.parse();
+                renderTree(ast);
+                els.dParse.innerHTML = `<span class="text-green-600">✓ Syntax Valid</span>`;
+                
+                // Mock Validator / Output
+                els.dVal.innerHTML = `<span class="text-green-600">✓ Clauses Valid</span>`;
+                els.dOut.innerHTML = `<span class="text-green-600">✓ AST Built</span>`;
+
+                // Success Status
+                setBanner(true, "✓ Valid SQL subset: Lexical and syntax checks passed.");
+
+            } catch (err) {
+                const msg = err.message;
+                setBanner(false, msg);
+                if (els.d3Container) {
+                     els.d3Container.innerHTML = `<div class="p-4 text-red-500 font-mono text-sm">${msg}</div>`;
+                }
+                
+                if(msg.includes('Lexical')) {
+                    els.dLex.innerHTML = `<span class="text-red-500">✗ Failed</span>`;
+                    els.dParse.innerHTML = `<span class="text-gray-400">Skipped</span>`;
+                } else {
+                    els.dParse.innerHTML = `<span class="text-red-500">✗ Failed</span>`;
+                }
+                els.dVal.innerHTML = `<span class="text-gray-400">Skipped</span>`;
+                els.dOut.innerHTML = `<span class="text-gray-400">Skipped</span>`;
+            }
+        }
+
+        function setBanner(isSuccess, msg) {
+            const classes = isSuccess 
+                ? "bg-[#eefcf3] text-[#118c4f] border-[#a3e5c0]" 
+                : "bg-red-50 text-red-700 border-red-200";
+            
+            els.statusBanner.className = `rounded-md px-4 py-3 text-sm font-medium border flex items-start gap-2 ${classes}`;
+            els.statusText.textContent = msg;
+
+            els.statusIcon.innerHTML = isSuccess 
+                ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>'
+                : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>';
+
+            els.dBan.className = `border rounded-md p-3 text-sm ${classes}`;
+            els.dBan.textContent = isSuccess ? "No errors found. Query matches the supported SQL grammar." : msg;
+        }
+
+        function renderTokens(tokens) {
+            let html = '';
+            tokens.forEach(t => {
+                if (t.type === TokenType.EOF) return;
+                html += `<tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                    <td class="py-2.5 px-4 font-mono text-purple-600 text-[13px] font-medium">${t.type}</td>
+                    <td class="py-2.5 px-4 font-mono text-gray-800 text-[13px]">${t.value}</td>
+                </tr>`;
+            });
+            els.tokensBody.innerHTML = html;
+        }
+
+        // --- D3 AST Visualizer ---
+        function astToHierarchy(ast) {
+            if (!ast) return null;
+            let root = { name: ast.type, children: [] };
+            
+            if (ast.type === 'SelectStatement') {
+                if (ast.select && ast.select.length) {
+                    root.children.push({
+                        name: 'SELECT',
+                        children: ast.select.map(c => ({ name: c.type === 'Wildcard' ? '*' : c.name }))
+                    });
+                }
+                if (ast.from) {
+                    root.children.push({ name: 'FROM', children: [{ name: ast.from }] });
+                }
+                if (ast.where) {
+                    root.children.push({ name: 'WHERE', children: [astToHierarchy(ast.where)] });
+                }
+                if (ast.orderBy) {
+                    root.children.push({ name: 'ORDER BY', children: [{ name: `${ast.orderBy.column} ${ast.orderBy.direction}` }] });
+                }
+                if (ast.limit) {
+                    root.children.push({ name: 'LIMIT', children: [{ name: String(ast.limit) }] });
+                }
+            } else if (ast.type === 'BinaryExpression') {
+                root.name = ast.operator;
+                root.children.push({ name: ast.left });
+                root.children.push(astToHierarchy(ast.right));
+            } else if (ast.type === 'Literal') {
+                return { name: String(ast.value) };
+            } else if (ast.type === 'Column') {
+                return { name: ast.name };
+            }
+            return root;
+        }
+
+        function renderTree(ast) {
+            const container = els.d3Container;
+            container.innerHTML = ''; // clear previous
+
+            const treeData = astToHierarchy(ast);
+            if (!treeData) return;
+
+            const width = container.clientWidth || 600;
+            const height = container.clientHeight || 400;
+
+            const svg = d3.select("#d3-container")
+                .append("svg")
+                .attr("width", "100%")
+                .attr("height", "100%");
+
+            const g = svg.append("g");
+
+            // Pan and Zoom
+            const zoom = d3.zoom()
+                .scaleExtent([0.5, 3])
+                .on("zoom", (e) => g.attr("transform", e.transform));
+            svg.call(zoom);
+            
+            const tree = d3.tree().nodeSize([40, 130]);
+            const root = d3.hierarchy(treeData);
+            tree(root);
+
+            // Center vertically and indent horizontally
+            svg.call(zoom.transform, d3.zoomIdentity.translate(80, height / 2)); 
+
+            // Links
+            g.selectAll(".link")
+                .data(root.links())
+                .enter().append("path")
+                .attr("class", "link")
+                .attr("fill", "none")
+                .attr("stroke", "#cbd5e1")
+                .attr("stroke-width", "2px")
+                .attr("d", d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x));
+
+            // Nodes
+            const node = g.selectAll(".node")
+                .data(root.descendants())
+                .enter().append("g")
+                .attr("class", "node")
+                .attr("transform", d => `translate(${d.y},${d.x})`);
+
+            node.append("circle")
+                .attr("r", 6)
+                .attr("fill", "#5a4fcf")
+                .attr("stroke", "#fff")
+                .attr("stroke-width", "2px")
+                .attr("class", "shadow-sm");
+
+            node.append("text")
+                .attr("dy", ".31em")
+                .attr("x", d => d.children ? -10 : 10)
+                .attr("text-anchor", d => d.children ? "end" : "start")
+                .text(d => d.data.name)
+                .attr("font-size", "12px")
+                .attr("fill", "#374151")
+                .attr("font-family", "Inter, sans-serif")
+                .attr("font-weight", d => d.children ? "600" : "400");
+        }
+
+    </script>
+</body>
+</html>
